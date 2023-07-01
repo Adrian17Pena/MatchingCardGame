@@ -1,0 +1,98 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <time.h>
+
+#define NUM_PLAYERS 6
+#define NUM_ROUNDS 6
+#define NUM_CARDS 52
+
+void *play_round(void *arg);
+
+int deck[NUM_CARDS];
+int next_card = 0;
+pthread_mutex_t deck_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+int main()
+{
+    int round;
+    pthread_t players[NUM_PLAYERS];
+
+    // Initialize deck of cards
+    for (int i = 0; i < NUM_CARDS; i++)
+    {
+        deck[i] = i;
+    }
+
+    // Shuffle deck of cards
+    srand(time(NULL));
+    for (int i = NUM_CARDS - 1; i > 0; i--)
+    {
+        int j = rand() % (i + 1);
+        int temp = deck[i];
+        deck[i] = deck[j];
+        deck[j] = temp;
+    }
+
+    for (round = 0; round < NUM_ROUNDS; round++)
+    {
+        int dealer = round % NUM_PLAYERS;
+        printf("Round %d: Player %d is the dealer.\n", round+1, dealer+1);
+
+        // Dealer draws target card
+        pthread_mutex_lock(&deck_mutex);
+        int target_card = deck[next_card++];
+        pthread_mutex_unlock(&deck_mutex);
+        printf("Dealer drew target card %d.\n", target_card);
+
+        // Deal cards to players
+        for (int i = 0; i < NUM_PLAYERS; i++)
+        {
+            pthread_create(&players[i], NULL, play_round, (void *)i);
+        }
+
+        for (int i = 0; i < NUM_PLAYERS; i++)
+        {
+            pthread_join(players[i], NULL);
+        }
+    }
+
+    return 0;
+}
+
+void *play_round(void *arg)
+{
+    int player = (int)arg;
+
+    // Draw card from deck
+    pthread_mutex_lock(&deck_mutex);
+    int card = deck[next_card++];
+    pthread_mutex_unlock(&deck_mutex);
+    printf("Player %d drew card %d.\n", player+1, card%13);
+
+    // Check if card matches target card
+    if (card == deck[NUM_CARDS-1])
+    {
+        printf("Player %d wins!\n", player+1);
+        exit(0);
+    }
+
+    // Card does not match target card
+    srand(time(NULL));
+    int choice = rand() % 2;
+
+    // Put chosen card at the bottom of the deck
+    pthread_mutex_lock(&deck_mutex);
+    if (choice == 0)
+    {
+        deck[NUM_CARDS-1] = card;
+    }
+    else
+    {
+        deck[NUM_CARDS-1] = deck[next_card-2];
+        deck[next_card-2] = card;
+    }
+    pthread_mutex_unlock(&deck_mutex);
+
+    pthread_exit(NULL);
+}
